@@ -7,6 +7,8 @@ from app.domain.enums.estado import (
     TipoFutbol,
     EstadoPartido,
     EstadoParticipacion,
+    Genero,
+    Posicion,
 )
 from app.domain.models.usuario import Usuario
 from app.domain.models.participacion import Participacion
@@ -25,6 +27,9 @@ class InMemoryDatabase:
                 longitud=-58.5648,
                 ubicacion_texto="Morón, Buenos Aires",
                 descripcion="Jugador amateur, me gusta el fútbol desde chico",
+                genero=Genero.MASCULINO,
+                posicion=Posicion.MEDIOCAMPISTA,
+                postulado=False,
             ),
             Usuario(
                 id=2,
@@ -34,6 +39,9 @@ class InMemoryDatabase:
                 longitud=-58.5640,
                 ubicacion_texto="Castelar, Buenos Aires",
                 descripcion="Delantero, juego hace 10 años",
+                genero=Genero.FEMENINO,
+                posicion=Posicion.DELANTERO,
+                postulado=True,  # Postulada para ser invitada
             ),
             Usuario(
                 id=3,
@@ -43,6 +51,33 @@ class InMemoryDatabase:
                 longitud=-58.6227,
                 ubicacion_texto="Ituzaingó, Buenos Aires",
                 descripcion="Arquero experimentado",
+                genero=Genero.MASCULINO,
+                posicion=Posicion.ARQUERO,
+                postulado=True,  # Postulado para ser invitado
+            ),
+            Usuario(
+                id=4,
+                nombre="Laura Martínez",
+                edad=23,
+                latitud=-34.7100,
+                longitud=-58.5700,
+                ubicacion_texto="Morón, Buenos Aires",
+                descripcion="Defensora rápida",
+                genero=Genero.FEMENINO,
+                posicion=Posicion.DEFENSA,
+                postulado=True,
+            ),
+            Usuario(
+                id=5,
+                nombre="Alex Torres",
+                edad=27,
+                latitud=-34.6800,
+                longitud=-58.5800,
+                ubicacion_texto="Castelar, Buenos Aires",
+                descripcion="Juego en cualquier posición",
+                genero=Genero.NO_DEFINIDO,
+                posicion=Posicion.MEDIOCAMPISTA,
+                postulado=False,
             ),
         ]
 
@@ -67,7 +102,6 @@ class InMemoryDatabase:
                 "estado": EstadoPartido.PENDIENTE,
                 "contrasena": None,
             },
-            # ... (resto de partidos)
         ]
 
         self.participaciones_db = [
@@ -79,7 +113,6 @@ class InMemoryDatabase:
                 estado=EstadoParticipacion.CONFIRMADO,
                 fecha_postulacion=datetime.now() - timedelta(hours=5),
             ),
-            # ... (resto de participaciones)
         ]
 
         self.invitaciones_db = []

@@ -31,3 +31,15 @@ class EstadoInvitacion(str, Enum):
     PENDIENTE = "PENDIENTE"
     ACEPTADA = "ACEPTADA"
     RECHAZADA = "RECHAZADA"
+
+class Genero(str, Enum):
+    MASCULINO = "MASCULINO"
+    FEMENINO = "FEMENINO"
+    NO_DEFINIDO = "NO_DEFINIDO"
+
+
+class Posicion(str, Enum):
+    ARQUERO = "ARQUERO"
+    DEFENSA = "DEFENSA"
+    MEDIOCAMPISTA = "MEDIOCAMPISTA"
+    DELANTERO = "DELANTERO"
