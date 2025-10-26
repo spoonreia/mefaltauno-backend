@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query, HTTPException
 from typing import List, Optional
 from datetime import datetime
-
+from app.infrastructure.database.database import database_client
 from app.infrastructure.api.schemas.usuario_schema import (
     UsuarioResponseSchema,
     UsuarioUpdateSchema,
@@ -13,7 +13,6 @@ from app.application.use_cases.obtener_calendario import ObtenerCalendarioUseCas
 from app.application.use_cases.actualizar_postulacion import ActualizarPostulacionUseCase
 from app.application.use_cases.buscar_jugadores import BuscarJugadoresDisponiblesUseCase
 from app.infrastructure.repositories.usuario_repository import UsuarioRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
 from app.domain.enums.estado import Genero, Posicion
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
@@ -35,7 +34,7 @@ def buscar_jugadores_disponibles(
     Retorna lista de jugadores ordenados por distancia (más cercanos primero)
     """
     try:
-        use_case = BuscarJugadoresDisponiblesUseCase()
+        use_case = BuscarJugadoresDisponiblesUseCase(database_client)
         return use_case.execute(
             organizador_id=organizador_id,
             genero=genero,
@@ -52,7 +51,7 @@ def buscar_jugadores_disponibles(
 @router.get("/{usuario_id}", response_model=UsuarioResponseSchema)
 def obtener_perfil(usuario_id: int):
     """Obtiene el perfil completo de un usuario"""
-    repo = UsuarioRepository(db_instance)
+    repo = UsuarioRepository(database_client)
     usuario = repo.obtener_por_id(usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -61,22 +60,16 @@ def obtener_perfil(usuario_id: int):
 
 @router.put("/{usuario_id}", response_model=UsuarioResponseSchema)
 def actualizar_usuario(usuario_id: int, usuario_update: UsuarioUpdateSchema):
-    """Actualiza los datos de un usuario"""
-    repo = UsuarioRepository(db_instance)
+    repo = UsuarioRepository(database_client)
     usuario = repo.obtener_por_id(usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    if usuario_update.edad is not None:
-        usuario.edad = usuario_update.edad
-    if usuario_update.descripcion is not None:
-        usuario.descripcion = usuario_update.descripcion
-    if usuario_update.genero is not None:
-        usuario.genero = usuario_update.genero
-    if usuario_update.posicion is not None:
-        usuario.posicion = usuario_update.posicion
+    usuario_actualizado = usuario.model_copy(
+        update=usuario_update.model_dump(exclude_unset=True)
+    )
 
-    return repo.actualizar(usuario)
+    return repo.actualizar(usuario_actualizado)
 
 
 @router.get("/{usuario_id}/calendario", response_model=List[PartidoCalendarioResponseSchema])
@@ -87,7 +80,7 @@ def obtener_calendario(
 ):
     """Obtiene el calendario de partidos de un usuario"""
     try:
-        use_case = ObtenerCalendarioUseCase()
+        use_case = ObtenerCalendarioUseCase(database_client)
         return use_case.execute(usuario_id, fecha_desde, fecha_hasta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -105,7 +98,7 @@ def actualizar_postulacion(
     - **activo=false**: El usuario se despostula y NO aparece en las búsquedas
     """
     try:
-        use_case = ActualizarPostulacionUseCase()
+        use_case = ActualizarPostulacionUseCase(database_client)
         return use_case.execute(usuario_id, activo)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

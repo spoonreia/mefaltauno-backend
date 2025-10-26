@@ -1,4 +1,5 @@
 """Schemas Pydantic para la API de Usuarios"""
+from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field
 from app.domain.enums.estado import Genero, Posicion
@@ -7,15 +8,15 @@ from app.domain.enums.estado import Genero, Posicion
 class UsuarioResponseSchema(BaseModel):
     """Schema de respuesta para usuarios"""
     id: int
+    posicion: Posicion
     nombre: str
     edad: int
-    latitud: float
-    longitud: float
+    fechaNac: date
     ubicacion_texto: str
     descripcion: Optional[str] = None
     genero: Genero
-    posicion: Posicion
-    postulado: bool
+    latitud: float
+    longitud: float
 
     class Config:
         from_attributes = True
@@ -23,7 +24,11 @@ class UsuarioResponseSchema(BaseModel):
 
 class UsuarioUpdateSchema(BaseModel):
     """Schema para actualizar usuario"""
-    edad: Optional[int] = Field(None, ge=16, le=99)
+    nombre: Optional[str] = None
+    fechaNac: Optional[date] = None
+    latitud: Optional[float] = None
+    longitud: Optional[float] = None
+    ubicacion_texto: Optional[str] = None
     descripcion: Optional[str] = Field(None, max_length=500)
     genero: Optional[Genero] = None
     posicion: Optional[Posicion] = None

@@ -3,43 +3,43 @@ from enum import Enum
 
 
 class TipoPartido(str, Enum):
-    PUBLICO = "PUBLICO"
-    PRIVADO = "PRIVADO"
+    PUBLICO = "Publico"
+    PRIVADO = "Privado"
 
 
 class TipoFutbol(str, Enum):
-    FUTBOL_5 = "FUTBOL_5"
-    FUTBOL_7 = "FUTBOL_7"
-    FUTBOL_11 = "FUTBOL_11"
+    FUTBOL_5 = "Futbol 5"
+    FUTBOL_7 = "Futbol 7"
+    FUTBOL_11 = "Futbol 11"
 
 
 class EstadoPartido(str, Enum):
-    PENDIENTE = "PENDIENTE"
-    CONFIRMADO = "CONFIRMADO"
-    CANCELADO = "CANCELADO"
-    FINALIZADO = "FINALIZADO"
+    PENDIENTE = "Pendiente"
+    CONFIRMADO = "Confirmado"
+    CANCELADO = "Cancelado"
+    FINALIZADO = "Finalizado"
 
 
 class EstadoParticipacion(str, Enum):
-    PENDIENTE = "PENDIENTE"
-    CONFIRMADO = "CONFIRMADO"
-    RECHAZADO = "RECHAZADO"
-    CANCELADO = "CANCELADO"
+    PENDIENTE = "Pendiente"
+    CONFIRMADO = "Confirmado"
+    RECHAZADO = "Rechazado"
+    CANCELADO = "Cancelado"
 
 
 class EstadoInvitacion(str, Enum):
-    PENDIENTE = "PENDIENTE"
-    ACEPTADA = "ACEPTADA"
-    RECHAZADA = "RECHAZADA"
+    PENDIENTE = "Pendiente"
+    ACEPTADA = "Aceptada"
+    RECHAZADA = "Rechazada"
 
 class Genero(str, Enum):
-    MASCULINO = "MASCULINO"
-    FEMENINO = "FEMENINO"
-    NO_DEFINIDO = "NO_DEFINIDO"
+    MASCULINO = "Masculino"
+    FEMENINO = "Femenino"
+    NO_DEFINIDO = "Otro"
 
 
 class Posicion(str, Enum):
-    ARQUERO = "ARQUERO"
-    DEFENSA = "DEFENSA"
-    MEDIOCAMPISTA = "MEDIOCAMPISTA"
-    DELANTERO = "DELANTERO"
+    ARQUERO = "Arquero"
+    DEFENSA = "Defensa"
+    MEDIOCAMPISTA = "Mediocampista"
+    DELANTERO = "Delantero"
