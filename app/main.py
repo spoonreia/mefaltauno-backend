@@ -30,7 +30,7 @@ app.include_router(invitacion_routes.router)
 def root():
     return {
         "mensaje": "API ME FALTA UNO - Arquitectura Hexagonal",
-        "version": "2.0.0",
+        "version": "1.0.0",
         "arquitectura": "Hexagonal (Ports & Adapters)",
         "endpoints": {
             "partidos": "/partidos",
