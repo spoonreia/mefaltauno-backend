@@ -1,18 +1,20 @@
 """Caso de uso: Ver Detalle de Partido"""
-from typing import List
 from app.domain.enums.estado import EstadoParticipacion
 from app.domain.exceptions.partido_exceptions import PartidoNoEncontradoException
 from app.infrastructure.repositories.partido_repository import PartidoRepository
 from app.infrastructure.repositories.usuario_repository import UsuarioRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.repositories.participacion_repository import ParticipacionRepository
+from app.infrastructure.database.database_service import DatabaseConnection
 
 
 class VerDetallePartidoUseCase:
     """Caso de uso para ver el detalle completo de un partido"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
-        self.usuario_repo = UsuarioRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.partido_repo = PartidoRepository(database_client)
+        self.usuario_repo = UsuarioRepository(database_client)
+        self.participacion_repo = ParticipacionRepository(database_client)
 
     def execute(self, partido_id: int, usuario_id: int) -> dict:
         """Ejecuta el caso de uso"""
@@ -27,20 +29,21 @@ class VerDetallePartidoUseCase:
         if not partido:
             raise PartidoNoEncontradoException("Partido no encontrado")
 
-        # Obtener participantes (confirmados y pendientes)
-        participantes = [
-            {
-                "id": p.id,
-                "partido_id": p.partido_id,
-                "jugador_id": p.jugador_id,
-                "jugador_nombre": p.jugador_nombre,
-                "estado": p.estado,
-                "fecha_postulacion": p.fecha_postulacion,
-            }
-            for p in db_instance.participaciones_db
-            if p.partido_id == partido_id
-            and p.estado in [EstadoParticipacion.CONFIRMADO, EstadoParticipacion.PENDIENTE]
-        ]
+        # Obtener participantes (confirmados y pendientes) - YA INCLUYE jugador_nombre por el JOIN
+        participaciones = self.participacion_repo.obtener_por_partido(partido_id)
+
+        participantes = []
+        for p in participaciones:
+            # Solo incluir confirmados y pendientes
+            if p.estado in [EstadoParticipacion.CONFIRMADO, EstadoParticipacion.PENDIENTE]:
+                participantes.append({
+                    "id": p.id,
+                    "partido_id": p.partido_id,
+                    "jugador_id": p.jugador_id,
+                    "jugador_nombre": p.jugador_nombre,
+                    "estado": p.estado,
+                    "fecha_postulacion": p.fecha_postulacion,
+                })
 
         # Ordenar: confirmados primero, luego por fecha
         participantes.sort(
@@ -51,16 +54,12 @@ class VerDetallePartidoUseCase:
         )
 
         # Contar participantes
-        confirmados = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido_id 
-            and p.estado == EstadoParticipacion.CONFIRMADO
-        ])
-        pendientes = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido_id 
-            and p.estado == EstadoParticipacion.PENDIENTE
-        ])
+        confirmados = self.participacion_repo.contar_por_estado(
+            partido_id, EstadoParticipacion.CONFIRMADO
+        )
+        pendientes = self.participacion_repo.contar_por_estado(
+            partido_id, EstadoParticipacion.PENDIENTE
+        )
 
         # Tiene cupo?
         tiene_cupo = confirmados < partido.capacidad_maxima

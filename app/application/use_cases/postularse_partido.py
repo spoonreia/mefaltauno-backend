@@ -9,20 +9,23 @@ from app.domain.exceptions.partido_exceptions import (
 )
 from app.infrastructure.repositories.partido_repository import PartidoRepository
 from app.infrastructure.repositories.usuario_repository import UsuarioRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.repositories.participacion_repository import ParticipacionRepository
+from app.infrastructure.database.database_service import DatabaseConnection
 
 
 class PostularsePartidoUseCase:
     """Caso de uso para postularse a un partido"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
-        self.usuario_repo = UsuarioRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.partido_repo = PartidoRepository(database_client)
+        self.usuario_repo = UsuarioRepository(database_client)
+        self.participacion_repo = ParticipacionRepository(database_client)
 
     def execute(
-        self, 
-        partido_id: int, 
-        usuario_id: int, 
+        self,
+        partido_id: int,
+        usuario_id: int,
         contrasena: str = None
     ) -> dict:
         """Ejecuta el caso de uso"""
@@ -42,12 +45,7 @@ class PostularsePartidoUseCase:
             raise ValueError("Ya eres el organizador de este partido")
 
         # Validar que no esté ya postulado
-        ya_postulado = any(
-            p.partido_id == partido_id 
-            and p.jugador_id == usuario_id 
-            and p.estado in [EstadoParticipacion.CONFIRMADO, EstadoParticipacion.PENDIENTE]
-            for p in db_instance.participaciones_db
-        )
+        ya_postulado = self.participacion_repo.existe_participacion_activa(partido_id, usuario_id)
         if ya_postulado:
             raise ValueError("Ya tienes una postulación activa en este partido")
 
@@ -59,36 +57,27 @@ class PostularsePartidoUseCase:
                 raise ContrasenaIncorrectaException("Contraseña incorrecta")
 
         # Validar cupo
-        confirmados = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido_id 
-            and p.estado == EstadoParticipacion.CONFIRMADO
-        ])
+        confirmados = self.participacion_repo.contar_por_estado(
+            partido_id, EstadoParticipacion.CONFIRMADO
+        )
         if confirmados >= partido.capacidad_maxima:
             raise PartidoCompletoException("El partido está completo")
 
-        # Crear participación
-        nueva_participacion_id = max(
-            [p.id for p in db_instance.participaciones_db], 
-            default=0
-        ) + 1
-
+        # Crear participación (el nombre del jugador se obtendrá por JOIN al leerlo)
         nueva_participacion = Participacion(
-            id=nueva_participacion_id,
+            id=0,
             partido_id=partido_id,
             jugador_id=usuario_id,
-            jugador_nombre=usuario.nombre,
+            jugador_nombre=usuario.nombre,  # Solo para el objeto, no se guarda en DB
             estado=EstadoParticipacion.PENDIENTE,
             fecha_postulacion=datetime.now(),
         )
-        db_instance.participaciones_db.append(nueva_participacion)
+        self.participacion_repo.crear(nueva_participacion)
 
         # Contar pendientes
-        pendientes = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido_id 
-            and p.estado == EstadoParticipacion.PENDIENTE
-        ])
+        pendientes = self.participacion_repo.contar_por_estado(
+            partido_id, EstadoParticipacion.PENDIENTE
+        )
 
         return {
             "mensaje": "Postulación enviada. Esperando aprobación del organizador",

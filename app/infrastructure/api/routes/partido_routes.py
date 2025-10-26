@@ -3,13 +3,13 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import List, Optional
 from datetime import datetime
 
+from app.infrastructure.database.database import database_client  # ← IMPORTAR
 from app.infrastructure.api.schemas.partido_schema import (
     PartidoCreateSchema,
     PartidoUpdateSchema,
     PartidoResponseSchema,
     PartidoBusquedaResponseSchema,
     PartidoDetalleResponseSchema,
-    PartidoCalendarioResponseSchema,
 )
 from app.application.use_cases.crear_partido import CrearPartidoUseCase
 from app.application.use_cases.editar_partido import EditarPartidoUseCase
@@ -18,7 +18,6 @@ from app.application.use_cases.buscar_partidos import BuscarPartidosUseCase
 from app.application.use_cases.postularse_partido import PostularsePartidoUseCase
 from app.application.use_cases.gestionar_participacion import GestionarParticipacionUseCase
 from app.application.use_cases.salir_partido import SalirPartidoUseCase
-from app.application.use_cases.obtener_calendario import ObtenerCalendarioUseCase
 from app.application.use_cases.ver_detalle_partido import VerDetallePartidoUseCase
 from app.application.use_cases.invitar_jugador import InvitarJugadorUseCase
 from app.domain.exceptions.partido_exceptions import (
@@ -37,7 +36,7 @@ router = APIRouter(prefix="/partidos", tags=["Partidos"])
 def crear_partido(partido: PartidoCreateSchema, organizador_id: int = Query(...)):
     """Crea un nuevo partido"""
     try:
-        use_case = CrearPartidoUseCase()
+        use_case = CrearPartidoUseCase(database_client)
         partido_creado = use_case.execute(
             titulo=partido.titulo,
             dinero_por_persona=partido.dinero_por_persona,
@@ -66,7 +65,7 @@ def editar_partido(
 ):
     """Edita un partido existente"""
     try:
-        use_case = EditarPartidoUseCase()
+        use_case = EditarPartidoUseCase(database_client)
         partido_actualizado = use_case.execute(
             partido_id=partido_id,
             organizador_id=organizador_id,
@@ -80,7 +79,7 @@ def editar_partido(
             contrasena=partido_update.contrasena,
         )
         # Convertir a detalle
-        detalle_use_case = VerDetallePartidoUseCase()
+        detalle_use_case = VerDetallePartidoUseCase(database_client)
         return detalle_use_case.execute(partido_id, organizador_id)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -94,7 +93,7 @@ def editar_partido(
 def eliminar_partido(partido_id: int, organizador_id: int = Query(...)):
     """Elimina un partido"""
     try:
-        use_case = EliminarPartidoUseCase()
+        use_case = EliminarPartidoUseCase(database_client)
         return use_case.execute(partido_id, organizador_id)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -116,7 +115,7 @@ def buscar_partidos(
 ):
     """Busca partidos disponibles"""
     try:
-        use_case = BuscarPartidosUseCase()
+        use_case = BuscarPartidosUseCase(database_client)
         return use_case.execute(
             usuario_id=usuario_id,
             titulo=titulo,
@@ -134,12 +133,12 @@ def buscar_partidos(
 def ver_detalle_partido(partido_id: int, usuario_id: int = Query(...)):
     """Obtiene el detalle completo de un partido"""
     try:
-        use_case = VerDetallePartidoUseCase()
+        use_case = VerDetallePartidoUseCase(database_client)
         return use_case.execute(partido_id, usuario_id)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
-        raise
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{partido_id}/postularse")
@@ -150,7 +149,7 @@ def postularse_a_partido(
 ):
     """Postularse a un partido"""
     try:
-        use_case = PostularsePartidoUseCase()
+        use_case = PostularsePartidoUseCase(database_client)
         return use_case.execute(partido_id, usuario_id, contrasena)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -161,7 +160,7 @@ def postularse_a_partido(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# ==================== APROBAR PARTICIPACIÓN ====================
+
 @router.post("/{partido_id}/participantes/{participacion_id}/aprobar")
 def aprobar_participacion(
     partido_id: int,
@@ -170,7 +169,7 @@ def aprobar_participacion(
 ):
     """Aprueba una participación pendiente"""
     try:
-        use_case = GestionarParticipacionUseCase()
+        use_case = GestionarParticipacionUseCase(database_client)
         return use_case.execute(partido_id, participacion_id, organizador_id, "aprobar")
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -182,7 +181,6 @@ def aprobar_participacion(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ==================== RECHAZAR PARTICIPACIÓN ====================
 @router.post("/{partido_id}/participantes/{participacion_id}/rechazar")
 def rechazar_participacion(
     partido_id: int,
@@ -191,7 +189,7 @@ def rechazar_participacion(
 ):
     """Rechaza una participación pendiente"""
     try:
-        use_case = GestionarParticipacionUseCase()
+        use_case = GestionarParticipacionUseCase(database_client)
         return use_case.execute(partido_id, participacion_id, organizador_id, "rechazar")
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -201,7 +199,6 @@ def rechazar_participacion(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ==================== EXPULSAR PARTICIPANTE ====================
 @router.delete("/{partido_id}/participantes/{participacion_id}/expulsar")
 def expulsar_participante(
     partido_id: int,
@@ -210,7 +207,7 @@ def expulsar_participante(
 ):
     """Expulsa un participante confirmado del partido"""
     try:
-        use_case = GestionarParticipacionUseCase()
+        use_case = GestionarParticipacionUseCase(database_client)
         return use_case.execute(partido_id, participacion_id, organizador_id, "expulsar")
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -220,7 +217,6 @@ def expulsar_participante(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ==================== GESTIONAR PARTICIPACIÓN (GENÉRICO) ====================
 @router.post("/{partido_id}/participantes/{participacion_id}/gestionar")
 def gestionar_participacion(
     partido_id: int,
@@ -230,7 +226,7 @@ def gestionar_participacion(
 ):
     """Gestiona una participación (aprobar/rechazar/expulsar)"""
     try:
-        use_case = GestionarParticipacionUseCase()
+        use_case = GestionarParticipacionUseCase(database_client)
         return use_case.execute(partido_id, participacion_id, organizador_id, accion)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -241,19 +237,19 @@ def gestionar_participacion(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# ==================== SALIR DEL PARTIDO ====================
+
 @router.delete("/{partido_id}/salir")
 def salir_del_partido(partido_id: int, usuario_id: int = Query(...)):
     """Salir de un partido"""
     try:
-        use_case = SalirPartidoUseCase()
+        use_case = SalirPartidoUseCase(database_client)
         return use_case.execute(partido_id, usuario_id)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# ==================== INVITAR JUGADOR ====================
+
 @router.post("/{partido_id}/invitar")
 def invitar_jugador(
     partido_id: int,
@@ -262,7 +258,7 @@ def invitar_jugador(
 ):
     """Invita un jugador a un partido"""
     try:
-        use_case = InvitarJugadorUseCase()
+        use_case = InvitarJugadorUseCase(database_client)
         return use_case.execute(partido_id, jugador_id, organizador_id)
     except PartidoNoEncontradoException as e:
         raise HTTPException(status_code=404, detail=str(e))

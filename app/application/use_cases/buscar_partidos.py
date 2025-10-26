@@ -1,20 +1,19 @@
 """Caso de uso: Buscar Partidos"""
 from typing import List, Optional
 from datetime import datetime
-from app.domain.models.partido import Partido
 from app.domain.enums.estado import TipoFutbol, EstadoParticipacion
-from app.infrastructure.repositories.partido_repository import PartidoRepository
 from app.infrastructure.repositories.usuario_repository import UsuarioRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.database.database_service import DatabaseConnection
 from app.infrastructure.utils.calculadora_distancia import calcular_distancia
+from sqlalchemy import text
 
 
 class BuscarPartidosUseCase:
     """Caso de uso para buscar partidos"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
-        self.usuario_repo = UsuarioRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.usuario_repo = UsuarioRepository(database_client)
 
     def execute(
         self,
@@ -33,81 +32,112 @@ class BuscarPartidosUseCase:
         if not usuario:
             raise ValueError("Usuario no encontrado")
 
-        # Obtener partidos donde el usuario ya participa
-        partidos_usuario = {
-            p.partido_id 
-            for p in db_instance.participaciones_db 
-            if p.jugador_id == usuario_id 
-            and p.estado in [EstadoParticipacion.CONFIRMADO, EstadoParticipacion.PENDIENTE]
+        # Construir query SQL
+        sql_parts = [
+            """
+            SELECT DISTINCT
+                p.id,
+                p.titulo,
+                p.dinero_por_persona,
+                p.descripcion,
+                p.fecha_hora,
+                p.latitud,
+                p.longitud,
+                p.ubicacion_texto,
+                p.capacidad_maxima,
+                p.organizador_id,
+                p.tipo_partido,
+                p.tipo_futbol,
+                p.edad_minima,
+                p.estado,
+                (SELECT COUNT(*) 
+                 FROM participaciones part 
+                 WHERE part.partido_id = p.id 
+                 AND part.estado = :estado_confirmado) as jugadores_confirmados,
+                (SELECT u.nombre FROM usuarios u WHERE u.id = p.organizador_id) as organizador_nombre
+            FROM partidos p
+            WHERE p.id NOT IN (
+                SELECT pa.partido_id 
+                FROM participaciones pa 
+                WHERE pa.jugador_id = :usuario_id 
+                AND pa.estado IN (:estado_confirmado, :estado_pendiente)
+            )
+            AND p.fecha_hora >= NOW()
+            """
+        ]
+
+        params = {
+            "usuario_id": usuario_id,
+            "estado_confirmado": EstadoParticipacion.CONFIRMADO.value,
+            "estado_pendiente": EstadoParticipacion.PENDIENTE.value
         }
 
-        # Buscar partidos
-        partidos = self.partido_repo.buscar(
-            titulo=titulo,
-            fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta,
-            tipo_futbol=tipo_futbol,
-            edad_minima=edad_minima,
-        )
+        # Filtros opcionales
+        if titulo:
+            sql_parts.append("AND LOWER(p.titulo) LIKE :titulo")
+            params["titulo"] = f"%{titulo.lower()}%"
 
-        # Filtrar y enriquecer resultados
+        if fecha_desde:
+            sql_parts.append("AND p.fecha_hora >= :fecha_desde")
+            params["fecha_desde"] = fecha_desde
+
+        if fecha_hasta:
+            sql_parts.append("AND p.fecha_hora <= :fecha_hasta")
+            params["fecha_hasta"] = fecha_hasta
+
+        if tipo_futbol:
+            sql_parts.append("AND p.tipo_futbol = :tipo_futbol")
+            params["tipo_futbol"] = tipo_futbol.value
+
+        if edad_minima is not None:
+            sql_parts.append("AND p.edad_minima <= :edad_minima")
+            params["edad_minima"] = edad_minima
+
+        sql = text(" ".join(sql_parts))
+
+        # Ejecutar query
+        with self.database_client.get_session("tt") as db:
+            results = db.execute(sql, params).fetchall()
+
+        # Filtrar por distancia y capacidad
         resultados = []
-        for partido in partidos:
-            # Excluir partidos donde ya participa
-            if partido.id in partidos_usuario:
+        for row in results:
+            # Solo partidos con cupo
+            if row.jugadores_confirmados >= row.capacidad_maxima:
                 continue
 
             # Calcular distancia
             distancia = calcular_distancia(
-                usuario.latitud,
-                usuario.longitud,
-                partido.latitud,
-                partido.longitud,
+                float(usuario.latitud),
+                float(usuario.longitud),
+                float(row.latitud),
+                float(row.longitud),
             )
 
             # Filtrar por distancia
             if distancia > distancia_maxima_km:
                 continue
 
-            # Contar confirmados
-            confirmados = len([
-                p for p in db_instance.participaciones_db
-                if p.partido_id == partido.id 
-                and p.estado == EstadoParticipacion.CONFIRMADO
-            ])
-
-            # Solo partidos con cupo
-            if confirmados >= partido.capacidad_maxima:
-                continue
-
-            if edad_minima is not None:
-                print(partido.edad_minima, edad_minima)
-                if partido.edad_minima > edad_minima:
-                    continue
-
-            # Obtener organizador
-            organizador = self.usuario_repo.obtener_por_id(partido.organizador_id)
-
             # Crear resultado
             resultado = {
-                "id": partido.id,
-                "titulo": partido.titulo,
-                "dinero_por_persona": partido.dinero_por_persona,
-                "descripcion": partido.descripcion,
-                "fecha_hora": partido.fecha_hora,
-                "latitud": partido.latitud,
-                "longitud": partido.longitud,
-                "ubicacion_texto": partido.ubicacion_texto,
-                "capacidad_maxima": partido.capacidad_maxima,
-                "jugadores_confirmados": confirmados,
-                "organizador_id": partido.organizador_id,
-                "organizador_nombre": organizador.nombre if organizador else "Desconocido",
-                "tipo_partido": partido.tipo_partido,
-                "tipo_futbol": partido.tipo_futbol,
-                "edad_minima": partido.edad_minima,
-                "estado": partido.estado,
+                "id": row.id,
+                "titulo": row.titulo,
+                "dinero_por_persona": row.dinero_por_persona,
+                "descripcion": row.descripcion,
+                "fecha_hora": row.fecha_hora,
+                "latitud": row.latitud,
+                "longitud": row.longitud,
+                "ubicacion_texto": row.ubicacion_texto,
+                "capacidad_maxima": row.capacidad_maxima,
+                "jugadores_confirmados": row.jugadores_confirmados,
+                "organizador_id": row.organizador_id,
+                "organizador_nombre": row.organizador_nombre,
+                "tipo_partido": row.tipo_partido,
+                "tipo_futbol": row.tipo_futbol,
+                "edad_minima": row.edad_minima,
+                "estado": row.estado,
                 "tiene_cupo": True,
-                "distancia_km": distancia,
+                "distancia_km": round(distancia, 2),
             }
             resultados.append(resultado)
 

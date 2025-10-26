@@ -5,15 +5,20 @@ from app.domain.enums.estado import EstadoInvitacion, EstadoParticipacion
 from app.domain.exceptions.partido_exceptions import PartidoCompletoException
 from app.infrastructure.repositories.partido_repository import PartidoRepository
 from app.infrastructure.repositories.usuario_repository import UsuarioRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.repositories.participacion_repository import ParticipacionRepository
+from app.infrastructure.repositories.invitacion_repository import InvitacionRepository
+from app.infrastructure.database.database_service import DatabaseConnection
 
 
 class ResponderInvitacionUseCase:
     """Caso de uso para responder una invitación"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
-        self.usuario_repo = UsuarioRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.partido_repo = PartidoRepository(database_client)
+        self.usuario_repo = UsuarioRepository(database_client)
+        self.participacion_repo = ParticipacionRepository(database_client)
+        self.invitacion_repo = InvitacionRepository(database_client)
 
     def execute(self, invitacion_id: int, usuario_id: int, aceptar: bool) -> dict:
         """Ejecuta el caso de uso"""
@@ -24,10 +29,7 @@ class ResponderInvitacionUseCase:
             raise ValueError("Usuario no encontrado")
 
         # Buscar invitación
-        invitacion = next(
-            (i for i in db_instance.invitaciones_db if i.id == invitacion_id),
-            None,
-        )
+        invitacion = self.invitacion_repo.obtener_por_id(invitacion_id)
         if not invitacion:
             raise ValueError("Invitación no encontrada")
 
@@ -46,36 +48,41 @@ class ResponderInvitacionUseCase:
                 raise ValueError("Partido no encontrado")
 
             # Verificar cupo
-            confirmados = len([
-                p for p in db_instance.participaciones_db
-                if p.partido_id == invitacion.partido_id
-                and p.estado == EstadoParticipacion.CONFIRMADO
-            ])
+            confirmados = self.participacion_repo.contar_por_estado(
+                invitacion.partido_id, EstadoParticipacion.CONFIRMADO
+            )
             if confirmados >= partido.capacidad_maxima:
                 raise PartidoCompletoException("El partido está completo")
 
-            # Crear participación confirmada
-            nueva_participacion_id = max(
-                [p.id for p in db_instance.participaciones_db],
-                default=0
-            ) + 1
-
-            nueva_participacion = Participacion(
-                id=nueva_participacion_id,
-                partido_id=invitacion.partido_id,
-                jugador_id=usuario_id,
-                jugador_nombre=usuario.nombre,
-                estado=EstadoParticipacion.CONFIRMADO,
-                fecha_postulacion=datetime.now(),
+            # ✅ VERIFICAR SI YA EXISTE UNA PARTICIPACIÓN
+            participacion_existente = self.participacion_repo.obtener_por_partido_y_jugador(
+                invitacion.partido_id, usuario_id
             )
-            db_instance.participaciones_db.append(nueva_participacion)
+
+            if participacion_existente:
+                # Si ya existe, actualizar su estado a CONFIRMADO
+                participacion_existente.estado = EstadoParticipacion.CONFIRMADO
+                self.participacion_repo.actualizar(participacion_existente)
+            else:
+                # Si no existe, crear nueva participación confirmada
+                nueva_participacion = Participacion(
+                    id=0,
+                    partido_id=invitacion.partido_id,
+                    jugador_id=usuario_id,
+                    jugador_nombre=usuario.nombre,  # Solo para el objeto, no se guarda en DB
+                    estado=EstadoParticipacion.CONFIRMADO,
+                    fecha_postulacion=datetime.now(),
+                )
+                self.participacion_repo.crear(nueva_participacion)
 
             # Marcar invitación como aceptada
             invitacion.estado = EstadoInvitacion.ACEPTADA
+            self.invitacion_repo.actualizar(invitacion)
             mensaje = "Invitación aceptada. Te has unido al partido"
         else:
             # Marcar invitación como rechazada
             invitacion.estado = EstadoInvitacion.RECHAZADA
+            self.invitacion_repo.actualizar(invitacion)
             mensaje = "Invitación rechazada"
 
         return {

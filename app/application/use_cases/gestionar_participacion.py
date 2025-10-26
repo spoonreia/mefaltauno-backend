@@ -2,19 +2,21 @@
 from app.domain.enums.estado import EstadoParticipacion
 from app.domain.exceptions.partido_exceptions import (
     PartidoNoEncontradoException,
-    PermisosDenegadosException,
     PartidoCompletoException,
 )
 from app.domain.services.partido_service import PartidoService
 from app.infrastructure.repositories.partido_repository import PartidoRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.repositories.participacion_repository import ParticipacionRepository
+from app.infrastructure.database.database_service import DatabaseConnection
 
 
 class GestionarParticipacionUseCase:
     """Caso de uso para gestionar participaciones"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.partido_repo = PartidoRepository(database_client)
+        self.participacion_repo = ParticipacionRepository(database_client)
         self.partido_service = PartidoService()
 
     def execute(
@@ -22,7 +24,7 @@ class GestionarParticipacionUseCase:
         partido_id: int,
         participacion_id: int,
         organizador_id: int,
-        accion: str,  # 'aprobar', 'rechazar', 'expulsar'
+        accion: str,
     ) -> dict:
         """Ejecuta el caso de uso"""
 
@@ -39,14 +41,8 @@ class GestionarParticipacionUseCase:
         self.partido_service.validar_organizador(partido, organizador_id)
 
         # Obtener participación
-        participacion = next(
-            (
-                p for p in db_instance.participaciones_db
-                if p.id == participacion_id and p.partido_id == partido_id
-            ),
-            None,
-        )
-        if not participacion:
+        participacion = self.participacion_repo.obtener_por_id(participacion_id)
+        if not participacion or participacion.partido_id != partido_id:
             raise ValueError("Participación no encontrada")
 
         # No puede gestionar su propia participación
@@ -61,22 +57,23 @@ class GestionarParticipacionUseCase:
         elif accion == "expulsar":
             return self._expulsar(partido, participacion)
 
+        return None
+
     def _aprobar(self, partido, participacion) -> dict:
         """Aprueba una participación pendiente"""
         if participacion.estado != EstadoParticipacion.PENDIENTE:
             raise ValueError("Solo se pueden aprobar participaciones pendientes")
 
         # Verificar cupo
-        confirmados = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido.id 
-            and p.estado == EstadoParticipacion.CONFIRMADO
-        ])
+        confirmados = self.participacion_repo.contar_por_estado(
+            partido.id, EstadoParticipacion.CONFIRMADO
+        )
         if confirmados >= partido.capacidad_maxima:
             raise PartidoCompletoException("El partido está completo")
 
         # Aprobar
         participacion.estado = EstadoParticipacion.CONFIRMADO
+        self.participacion_repo.actualizar(participacion)
         mensaje = f"{participacion.jugador_nombre} ha sido aprobado"
 
         return self._generar_respuesta(partido.id, mensaje)
@@ -88,6 +85,7 @@ class GestionarParticipacionUseCase:
 
         # Rechazar
         participacion.estado = EstadoParticipacion.RECHAZADO
+        self.participacion_repo.actualizar(participacion)
         mensaje = f"{participacion.jugador_nombre} ha sido rechazado"
 
         return self._generar_respuesta(partido.id, mensaje)
@@ -99,22 +97,19 @@ class GestionarParticipacionUseCase:
 
         # Expulsar
         participacion.estado = EstadoParticipacion.CANCELADO
+        self.participacion_repo.actualizar(participacion)
         mensaje = f"{participacion.jugador_nombre} ha sido expulsado del partido"
 
         return self._generar_respuesta(partido.id, mensaje)
 
     def _generar_respuesta(self, partido_id: int, mensaje: str) -> dict:
         """Genera la respuesta con conteos actualizados"""
-        confirmados = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido_id 
-            and p.estado == EstadoParticipacion.CONFIRMADO
-        ])
-        pendientes = len([
-            p for p in db_instance.participaciones_db
-            if p.partido_id == partido_id 
-            and p.estado == EstadoParticipacion.PENDIENTE
-        ])
+        confirmados = self.participacion_repo.contar_por_estado(
+            partido_id, EstadoParticipacion.CONFIRMADO
+        )
+        pendientes = self.participacion_repo.contar_por_estado(
+            partido_id, EstadoParticipacion.PENDIENTE
+        )
         
         partido = self.partido_repo.obtener_por_id(partido_id)
 

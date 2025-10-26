@@ -1,19 +1,20 @@
 """Caso de uso: Eliminar Partido"""
-from datetime import datetime
 from app.domain.services.partido_service import PartidoService
-from app.domain.exceptions.partido_exceptions import (
-    PartidoNoEncontradoException,
-    PermisosDenegadosException,
-)
+from app.domain.exceptions.partido_exceptions import PartidoNoEncontradoException
 from app.infrastructure.repositories.partido_repository import PartidoRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.repositories.participacion_repository import ParticipacionRepository
+from app.infrastructure.repositories.invitacion_repository import InvitacionRepository
+from app.infrastructure.database.database_service import DatabaseConnection
 
 
 class EliminarPartidoUseCase:
     """Caso de uso para eliminar un partido"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.partido_repo = PartidoRepository(database_client)
+        self.participacion_repo = ParticipacionRepository(database_client)
+        self.invitacion_repo = InvitacionRepository(database_client)
         self.partido_service = PartidoService()
 
     def execute(self, partido_id: int, organizador_id: int) -> dict:
@@ -34,16 +35,10 @@ class EliminarPartidoUseCase:
             )
 
         # Eliminar participaciones
-        db_instance.participaciones_db = [
-            p for p in db_instance.participaciones_db 
-            if p.partido_id != partido_id
-        ]
+        self.participacion_repo.eliminar_por_partido(partido_id)
 
         # Eliminar invitaciones
-        db_instance.invitaciones_db = [
-            i for i in db_instance.invitaciones_db 
-            if i.partido_id != partido_id
-        ]
+        self.invitacion_repo.eliminar_por_partido(partido_id)
 
         # Eliminar partido
         self.partido_repo.eliminar(partido_id)

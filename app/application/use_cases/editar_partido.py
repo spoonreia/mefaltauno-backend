@@ -3,15 +3,18 @@ from typing import Optional
 from app.domain.services.partido_service import PartidoService
 from app.domain.exceptions.partido_exceptions import PartidoNoEncontradoException
 from app.infrastructure.repositories.partido_repository import PartidoRepository
-from app.infrastructure.repositories.in_memory_db import db_instance
+from app.infrastructure.repositories.participacion_repository import ParticipacionRepository
+from app.infrastructure.database.database_service import DatabaseConnection
 from app.domain.enums.estado import EstadoParticipacion
 
 
 class EditarPartidoUseCase:
     """Caso de uso para editar un partido"""
 
-    def __init__(self):
-        self.partido_repo = PartidoRepository(db_instance)
+    def __init__(self, database_client: DatabaseConnection):
+        self.database_client = database_client
+        self.partido_repo = PartidoRepository(database_client)
+        self.participacion_repo = ParticipacionRepository(database_client)
         self.partido_service = PartidoService()
 
     def execute(
@@ -54,10 +57,9 @@ class EditarPartidoUseCase:
             partido.ubicacion_texto = ubicacion_texto
 
         if capacidad_maxima is not None:
-            confirmados = len([
-                p for p in db_instance.participaciones_db
-                if p.partido_id == partido_id and p.estado == EstadoParticipacion.CONFIRMADO
-            ])
+            confirmados = self.participacion_repo.contar_por_estado(
+                partido_id, EstadoParticipacion.CONFIRMADO
+            )
             self.partido_service.validar_capacidad(capacidad_maxima, confirmados)
             partido.capacidad_maxima = capacidad_maxima
 
